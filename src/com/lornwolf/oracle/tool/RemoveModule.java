@@ -20,48 +20,64 @@ public class RemoveModule {
         // String password = "PWD11001";
 
         try {
-        	FileOutputStream dropTableStream = new FileOutputStream("/drop_table.txt");
-        	FileOutputStream deleteDataStream = new FileOutputStream("/delete_data.txt");
-
-        	
             Class.forName(driver);
             conn = DriverManager.getConnection(url, username, password);
             Statement stmt = conn.createStatement();
 
-            DatabaseMetaData metaData = conn.getMetaData();
-            /**
-             * metaData.getTables(catalog, schemaPattern, tableNamePattern, types)
-             * catalog 目录名称。
-             * schema 架构名称模式（一般为用户名，注意大写），null查所有，不能用""代替null。
-             * tableName 表名（null查所有）。
-             * types 表类型的字符串数组。null查所有，不能用""代替null。
-             **/
-            ResultSet tables = metaData.getTables(null, username.toUpperCase(), null, new String[]{ "TABLE" } );
-            while (tables.next()) {
-                String resTableName = tables.getString("TABLE_NAME");
-                if (resTableName.toUpperCase().contains("P17")) {
-                    System.out.println(resTableName);
-                    dropTableStream.write(("DROP TABLE " + resTableName + ";\r\n").getBytes());
-                }
+            FileOutputStream dropTableStream = new FileOutputStream("D:/drop_table.sql");
+            FileOutputStream dropViewStream = new FileOutputStream("D:/drop_view.sql");
 
-                ResultSet resultSet = stmt.executeQuery("select t.column_name from user_col_comments t where t.table_name = '" + resTableName + "'");
-                while(resultSet.next()){
-                    String fieldName = resultSet.getString("column_name");
-                    if (fieldName.toUpperCase().contains("PARAMETER_CD")) {
-                        System.out.println("    " + fieldName);
-                        deleteDataStream.write(("DELETE FROM " + resTableName + " WHERE PARAMETER_CD LIKE %P17%;\r\n").getBytes());
+            DatabaseMetaData metaData = conn.getMetaData();
+            ResultSet tables = metaData.getTables(null, username.toUpperCase(), null, new String[]{"TABLE", "VIEW"});
+
+            while (tables.next()) {
+                String tableType = tables.getString("TABLE_TYPE");
+                String tableName = tables.getString("TABLE_NAME");
+
+                if (tableType.toUpperCase().equals("TABLE")) {
+                    if (tableName.toUpperCase().contains("P17")) {
+                        System.out.println(tableName);
+                        dropTableStream.write(("DROP TABLE " + username + "." + tableName + ";\r\n").getBytes());
+                    } else {
+                        ResultSet resultSet = stmt.executeQuery("select t.column_name from user_col_comments t where t.table_name = '" + tableName + "'");
+                        FileOutputStream deleteDataStream = new FileOutputStream("D:/delete_data_" + tableName.toUpperCase() + ".sql");
+                        while(resultSet.next()) {
+                            String fieldName = resultSet.getString("column_name");
+                            deleteDataStream.write(("DELETE FROM " + username + "." + tableName + " WHERE regexp_like(" + fieldName + ",'p17','i');\r\n").getBytes());
+                        }
+                        resultSet.close();
+                        deleteDataStream.flush();
+                        deleteDataStream.close();
                     }
                 }
-                resultSet.close();
-            }
-            stmt.close();
-            tables.close();
-            conn.close();
 
+                if (tableType.toUpperCase().equals("VIEW")) {
+                    if (tableName.toUpperCase().contains("P17")) {
+                        System.out.println("VIEW : " + tableName);
+                        dropTableStream.write(("DROP VIEW " + username + "." + tableName + ";\r\n").getBytes());
+                    }
+                }
+            }
+            tables.close();
             dropTableStream.flush();
             dropTableStream.close();
-            deleteDataStream.flush();
-            deleteDataStream.close();
+            dropViewStream.flush();
+            dropViewStream.close();
+
+            FileOutputStream dropSourceStream = new FileOutputStream("D:/drop_source.sql");
+            ResultSet resultSet = stmt.executeQuery("SELECT DISTINCT OWNER, NAME, TYPE FROM ALL_SOURCE WHERE OWNER = '" + username + "'");
+            while(resultSet.next()) {
+                String sourceName = resultSet.getString("NAME");
+                if (sourceName.toUpperCase().contains("P17")) {
+                    dropSourceStream.write(("DROP " + resultSet.getString("TYPE") + " " + username + "." + sourceName + ";\r\n").getBytes());
+                }
+            }
+            resultSet.close();
+            dropSourceStream.flush();
+            dropSourceStream.close();
+
+            stmt.close();
+            conn.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
